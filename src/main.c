@@ -1,32 +1,34 @@
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 #include "db.h"
+#include "parser.h"
 
 int main() {
     char command[256];
-    printf("Welcome to MyDB! Enter commands (insert/select/exit)\n");
+    printf("Welcome to MyDB! Commands: insert, select, select where id=N, exit\n");
 
     while (1) {
         printf("> ");
         if (!fgets(command, sizeof(command), stdin)) break;
 
-        if (strncmp(command, "insert", 6) == 0) {
-            Row r;
-            if (sscanf(command, "insert %d %31s %d", &r.id, r.name, &r.age) == 3) {
-                db_insert(&r);
+        Command cmd = parse_command(command);
+
+        switch (cmd.type) {
+            case CMD_INSERT:
+                db_insert(&cmd.row);
                 printf("Inserted row.\n");
-            } else {
-                printf("Usage: insert <id> <name> <age>\n");
-            }
-        } else if (strncmp(command, "select", 6) == 0) {
-            db_select_all();
-        } else if (strncmp(command, "exit", 4) == 0) {
-            break;
-        } else {
-            printf("Unknown command.\n");
+                break;
+            case CMD_SELECT_ALL:
+                db_select_all();
+                break;
+            case CMD_SELECT_ID:
+                db_select_by_id(cmd.query_id);
+                break;
+            case CMD_EXIT:
+                return 0;
+            default:
+                printf("Unknown command.\n");
         }
     }
-
     return 0;
 }
