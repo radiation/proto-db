@@ -1,6 +1,7 @@
 #include "db.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define DB_FILE "rows.db"
 
@@ -33,10 +34,8 @@ void db_insert(Row* row) {
 
     load_header(f);
 
-    // assign unique autoincrement id
     row->id = header.next_id++;
 
-    // write row at end (after header)
     fseek(f, sizeof(DbHeader) + header.num_rows * sizeof(Row), SEEK_SET);
     fwrite(row, sizeof(Row), 1, f);
 
@@ -55,7 +54,9 @@ void db_select_all() {
     for (int i = 0; i < header.num_rows; i++) {
         fseek(f, sizeof(DbHeader) + i * sizeof(Row), SEEK_SET);
         fread(&r, sizeof(Row), 1, f);
-        printf("Row: id=%d, name=%s, age=%d\n", r.id, r.name, r.age);
+        if (!r.is_deleted) {
+            printf("Row: id=%d, name=%s, age=%d\n", r.id, r.name, r.age);
+        }
     }
     fclose(f);
 }
@@ -77,5 +78,60 @@ void db_select_by_id(int id) {
         }
     }
     printf("Row with id=%d not found.\n", id);
+    fclose(f);
+}
+
+void db_update_by_id(int id, const char* new_name, int new_age) {
+    FILE* f = fopen(DB_FILE, "r+b");
+    if (!f) { perror("fopen"); return; }
+
+    load_header(f);
+
+    Row r;
+    for (int i = 0; i < header.num_rows; i++) {
+        fseek(f, sizeof(DbHeader) + i * sizeof(Row), SEEK_SET);
+        fread(&r, sizeof(Row), 1, f);
+
+        if (r.id == id && !r.is_deleted) {
+            strncpy(r.name, new_name, sizeof(r.name));
+            r.age = new_age;
+
+            fseek(f, sizeof(DbHeader) + i * sizeof(Row), SEEK_SET);
+            fwrite(&r, sizeof(Row), 1, f);
+            fflush(f);
+
+            printf("Updated row with id=%d\n", id);
+            fclose(f);
+            return;
+        }
+    }
+
+    printf("Row with id=%d not found or deleted.\n", id);
+    fclose(f);
+}
+
+void db_delete_by_id(int id) {
+    FILE* f = fopen(DB_FILE, "r+b");
+    if (!f) { perror("fopen"); return; }
+
+    load_header(f);
+
+    Row r;
+    for (int i = 0; i < header.num_rows; i++) {
+        fseek(f, sizeof(DbHeader) + i * sizeof(Row), SEEK_SET);
+        fread(&r, sizeof(Row), 1, f);
+
+        if (r.id == id && r.is_deleted == 0) {
+            r.is_deleted = 1;  // mark as deleted
+            fseek(f, sizeof(DbHeader) + i * sizeof(Row), SEEK_SET);
+            fwrite(&r, sizeof(Row), 1, f);
+            fflush(f);
+            printf("Deleted row with id=%d\n", id);
+            fclose(f);
+            return;
+        }
+    }
+
+    printf("Row with id=%d not found or already deleted.\n", id);
     fclose(f);
 }
