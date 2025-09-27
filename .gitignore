@@ -1,2 +1,3 @@
 build/*
 rows.db
+**/*.o
