@@ -117,28 +117,44 @@ void db_select_all() {
     fclose(f);
 }
 
-void db_select_by_id(int id) {
-    long offset = index_find(&id_index, id);
-    if (offset == -1) {
-        printf("Row with id=%d not found.\n", id);
-        return;
-    }
-
+void db_select_where(Field field, Operator op, const char* str_val, int int_val) {
     FILE* f = fopen(DB_FILE, "rb");
     if (!f) { perror("fopen"); return; }
 
+    load_header(f);
+
     Row r;
-    fseek(f, offset, SEEK_SET);
-    fread(&r, sizeof(Row), 1, f);
-    fclose(f);
+    for (int i = 0; i < header.num_rows; i++) {
+        fseek(f, sizeof(DbHeader) + i * sizeof(Row), SEEK_SET);
+        fread(&r, sizeof(Row), 1, f);
+        if (r.is_deleted) continue;
 
-    if (!r.is_deleted) {
-        printf("Row: id=%d, name=%s, age=%d\n", r.id, r.name, r.age);
-    } else {
-        printf("Row with id=%d has been deleted.\n", id);
+        int match = 0;
+        switch (field) {
+            case FIELD_ID:
+                if ((op == OP_EQ && r.id == int_val) ||
+                    (op == OP_GT && r.id > int_val) ||
+                    (op == OP_LT && r.id < int_val)) match = 1;
+                break;
+            case FIELD_AGE:
+                if ((op == OP_EQ && r.age == int_val) ||
+                    (op == OP_GT && r.age > int_val) ||
+                    (op == OP_LT && r.age < int_val)) match = 1;
+                break;
+            case FIELD_NAME:
+                if ((op == OP_EQ && strncmp(r.name, str_val, sizeof(r.name)) == 0)) {
+                    match = 1;
+                }
+                // We’ll skip > and < for strings for now
+                break;
+        }
+
+        if (match) {
+            printf("Row: id=%d, name=%s, age=%d\n", r.id, r.name, r.age);
+        }
     }
+    fclose(f);
 }
-
 
 void db_update_by_id(int id, const char* new_name, int new_age) {
     FILE* f = fopen(DB_FILE, "r+b");

@@ -21,11 +21,11 @@ int main() {
                 db_insert(&cmd.row);
                 printf("Inserted row.\n");
                 break;
+            case CMD_SELECT_COND:
+                db_select_where(cmd.field, cmd.op, cmd.str_value, cmd.int_value);
+                break;
             case CMD_SELECT_ALL:
                 db_select_all();
-                break;
-            case CMD_SELECT_ID:
-                db_select_by_id(cmd.query_id);
                 break;
             case CMD_UPDATE:
                 db_update_by_id(cmd.query_id, cmd.row.name, cmd.row.age);
