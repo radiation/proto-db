@@ -25,11 +25,42 @@ static void save_header(FILE* f) {
     fflush(f);
 }
 
+static int unique_field_exists(FILE* f, Field field, const void* value, int exclude_id) {
+    Row r;
+    for (int i = 0; i < header.num_rows; i++) {
+        fseek(f, sizeof(DbHeader) + i * sizeof(Row), SEEK_SET);
+        fread(&r, sizeof(Row), 1, f);
+        if (r.is_deleted) continue;
+
+        // Skip the row being updated
+        if (exclude_id != -1 && r.id == exclude_id) continue;
+
+        switch (field) {
+            case FIELD_ID:
+                if (r.id == *(int*)value) return 1;
+                break;
+            case FIELD_NAME:
+                if (strncmp(r.name, (char*)value, sizeof(r.name)) == 0) return 1;
+                break;
+            case FIELD_AGE:
+                if (r.age == *(int*)value) return 1;
+                break;
+        }
+    }
+    return 0;
+}
+
 void db_insert(Row* row) {
     FILE* f = fopen(DB_FILE, "r+b");
     if (!f) {
         f = fopen(DB_FILE, "w+b");
         if (!f) { perror("fopen"); exit(1); }
+    }
+
+    if (unique_field_exists(f, FIELD_NAME, row->name, -1)) {
+        printf("Error: name '%s' already exists.\n", row->name);
+        fclose(f);
+        return;
     }
 
     load_header(f);
@@ -84,6 +115,12 @@ void db_select_by_id(int id) {
 void db_update_by_id(int id, const char* new_name, int new_age) {
     FILE* f = fopen(DB_FILE, "r+b");
     if (!f) { perror("fopen"); return; }
+
+    if (unique_field_exists(f, FIELD_NAME, new_name, id)) {
+        printf("Error: name '%s' already exists. Update rejected.\n", new_name);
+        fclose(f);
+        return;
+    }
 
     load_header(f);
 

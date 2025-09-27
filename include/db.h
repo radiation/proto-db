@@ -16,6 +16,12 @@ typedef struct {
 } Row;
 
 typedef enum {
+    FIELD_ID,
+    FIELD_NAME,
+    FIELD_AGE
+} Field;
+
+typedef enum {
     CMD_INSERT,
     CMD_SELECT_ALL,
     CMD_SELECT_ID,
