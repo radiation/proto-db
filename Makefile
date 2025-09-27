@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -Iinclude
 SRC = $(wildcard src/*.c)
 OBJ = $(SRC:.c=.o)
-BIN = build/mydb
+BIN = build/protodb
 
 all: $(BIN)
 

@@ -4,6 +4,8 @@
 #include "parser.h"
 
 int main() {
+    db_init();
+
     char command[256];
     printf("Welcome to ProtoDB! Commands: insert, select, select where id=N, exit\n");
 

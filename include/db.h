@@ -37,6 +37,7 @@ typedef struct {
     int query_id;
 } Command;
 
+void db_init();
 void db_insert(Row* row);
 void db_select_all();
 void db_select_by_id(int id);

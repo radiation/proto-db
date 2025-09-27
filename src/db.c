@@ -1,4 +1,5 @@
 #include "db.h"
+#include "index.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,6 +7,7 @@
 #define DB_FILE "rows.db"
 
 static DbHeader header;
+static Index id_index;
 
 static void load_header(FILE* f) {
     fseek(f, 0, SEEK_SET);
@@ -50,6 +52,26 @@ static int unique_field_exists(FILE* f, Field field, const void* value, int excl
     return 0;
 }
 
+void db_init() {
+    index_init(&id_index, 16);
+
+    FILE* f = fopen(DB_FILE, "rb");
+    if (!f) return;
+
+    load_header(f);
+
+    Row r;
+    for (int i = 0; i < header.num_rows; i++) {
+        long offset = sizeof(DbHeader) + i * sizeof(Row);
+        fseek(f, offset, SEEK_SET);
+        fread(&r, sizeof(Row), 1, f);
+        if (!r.is_deleted) {
+            index_add(&id_index, r.id, offset);
+        }
+    }
+    fclose(f);
+}
+
 void db_insert(Row* row) {
     FILE* f = fopen(DB_FILE, "r+b");
     if (!f) {
@@ -73,6 +95,9 @@ void db_insert(Row* row) {
     header.num_rows++;
     save_header(f);
     fclose(f);
+
+    long offset = sizeof(DbHeader) + (header.num_rows - 1) * sizeof(Row);
+    index_add(&id_index, row->id, offset);
 }
 
 void db_select_all() {
@@ -93,24 +118,27 @@ void db_select_all() {
 }
 
 void db_select_by_id(int id) {
+    long offset = index_find(&id_index, id);
+    if (offset == -1) {
+        printf("Row with id=%d not found.\n", id);
+        return;
+    }
+
     FILE* f = fopen(DB_FILE, "rb");
     if (!f) { perror("fopen"); return; }
 
-    load_header(f);
-
     Row r;
-    for (int i = 0; i < header.num_rows; i++) {
-        fseek(f, sizeof(DbHeader) + i * sizeof(Row), SEEK_SET);
-        fread(&r, sizeof(Row), 1, f);
-        if (r.id == id) {
-            printf("Row: id=%d, name=%s, age=%d\n", r.id, r.name, r.age);
-            fclose(f);
-            return;
-        }
-    }
-    printf("Row with id=%d not found.\n", id);
+    fseek(f, offset, SEEK_SET);
+    fread(&r, sizeof(Row), 1, f);
     fclose(f);
+
+    if (!r.is_deleted) {
+        printf("Row: id=%d, name=%s, age=%d\n", r.id, r.name, r.age);
+    } else {
+        printf("Row with id=%d has been deleted.\n", id);
+    }
 }
+
 
 void db_update_by_id(int id, const char* new_name, int new_age) {
     FILE* f = fopen(DB_FILE, "r+b");
