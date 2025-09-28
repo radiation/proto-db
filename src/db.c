@@ -66,7 +66,7 @@ void db_init() {
         fseek(f, offset, SEEK_SET);
         fread(&r, sizeof(Row), 1, f);
         if (!r.is_deleted) {
-            index_add(&id_index, r.id, offset);
+            index_add(&id_index, &r.id, offset);
         }
     }
     fclose(f);
@@ -97,7 +97,7 @@ void db_insert(Row* row) {
     fclose(f);
 
     long offset = sizeof(DbHeader) + (header.num_rows - 1) * sizeof(Row);
-    index_add(&id_index, row->id, offset);
+    index_add(&id_index, &row->id, offset);
 }
 
 void db_select_all() {
