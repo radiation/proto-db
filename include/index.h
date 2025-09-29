@@ -22,4 +22,5 @@ typedef struct {
 void index_init(Index* idx, IndexType type, Field field, int capacity);
 void index_free(Index* idx);
 void index_add(Index* idx, const void* key, long offset);
+void index_remove(Index* idx, const void* key);
 long index_find(Index* idx, const void* key);

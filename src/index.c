@@ -58,6 +58,39 @@ void index_add(Index* idx, const void* key, long offset) {
     idx->size++;
 }
 
+void index_remove(Index* idx, const void* key) {
+    if (idx->type == INDEX_INT) {
+        int target = *(int*)key;
+        int* arr = (int*)idx->keys;
+
+        for (int i = 0; i < idx->size; i++) {
+            if (arr[i] == target) {
+                // shift everything down
+                for (int j = i; j < idx->size - 1; j++) {
+                    arr[j] = arr[j + 1];
+                    idx->offsets[j] = idx->offsets[j + 1];
+                }
+                idx->size--;
+                return;
+            }
+        }
+    } else if (idx->type == INDEX_STRING) {
+        const char* target = (const char*)key;
+        char** arr = (char**)idx->keys;
+
+        for (int i = 0; i < idx->size; i++) {
+            if (strcmp(arr[i], target) == 0) {
+                free(arr[i]); // free string copy
+                for (int j = i; j < idx->size - 1; j++) {
+                    arr[j] = arr[j + 1];
+                    idx->offsets[j] = idx->offsets[j + 1];
+                }
+                idx->size--;
+                return;
+            }
+        }
+    }
+}
 
 long index_find(Index* idx, const void* key) {
     if (idx->type == INDEX_INT) {

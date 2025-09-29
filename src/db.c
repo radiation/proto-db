@@ -174,12 +174,13 @@ void db_update_by_id(int id, const char* new_name, int new_age) {
         fread(&r, sizeof(Row), 1, f);
 
         if (r.id == id && !r.is_deleted) {
-            if (index_find(&name_index, new_name) != -1 && strcmp(r.name, new_name) != 0) {
+            if (strcmp(r.name, new_name) != 0 &&
+                index_find(&name_index, new_name) != -1) {
                 printf("Error: name '%s' already exists. Update rejected.\n", new_name);
                 fclose(f);
                 return;
             }
-    
+
             strncpy(r.name, new_name, sizeof(r.name));
             r.age = new_age;
 
@@ -209,10 +210,14 @@ void db_delete_by_id(int id) {
         fread(&r, sizeof(Row), 1, f);
 
         if (r.id == id && r.is_deleted == 0) {
-            r.is_deleted = 1;  // mark as deleted
+            r.is_deleted = 1;
             fseek(f, sizeof(DbHeader) + i * sizeof(Row), SEEK_SET);
             fwrite(&r, sizeof(Row), 1, f);
             fflush(f);
+
+            index_remove(&id_index, &r.id);
+            index_remove(&name_index, r.name);
+
             printf("Deleted row with id=%d\n", id);
             fclose(f);
             return;
