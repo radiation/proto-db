@@ -8,6 +8,7 @@
 
 static DbHeader header;
 static Index id_index;
+static Index name_index;
 
 static void load_header(FILE* f) {
     fseek(f, 0, SEEK_SET);
@@ -27,33 +28,9 @@ static void save_header(FILE* f) {
     fflush(f);
 }
 
-static int unique_field_exists(FILE* f, Field field, const void* value, int exclude_id) {
-    Row r;
-    for (int i = 0; i < header.num_rows; i++) {
-        fseek(f, sizeof(DbHeader) + i * sizeof(Row), SEEK_SET);
-        fread(&r, sizeof(Row), 1, f);
-        if (r.is_deleted) continue;
-
-        // Skip the row being updated
-        if (exclude_id != -1 && r.id == exclude_id) continue;
-
-        switch (field) {
-            case FIELD_ID:
-                if (r.id == *(int*)value) return 1;
-                break;
-            case FIELD_NAME:
-                if (strncmp(r.name, (char*)value, sizeof(r.name)) == 0) return 1;
-                break;
-            case FIELD_AGE:
-                if (r.age == *(int*)value) return 1;
-                break;
-        }
-    }
-    return 0;
-}
-
 void db_init() {
-    index_init(&id_index, 16);
+    index_init(&id_index, INDEX_INT, FIELD_ID, 16);
+    index_init(&name_index, INDEX_STRING, FIELD_NAME, 16);
 
     FILE* f = fopen(DB_FILE, "rb");
     if (!f) return;
@@ -79,8 +56,8 @@ void db_insert(Row* row) {
         if (!f) { perror("fopen"); exit(1); }
     }
 
-    if (unique_field_exists(f, FIELD_NAME, row->name, -1)) {
-        printf("Error: name '%s' already exists.\n", row->name);
+    if (index_find(&name_index, row->name) != -1) {
+        printf("Error: name '%s' already exists. Insert rejected.\n", row->name);
         fclose(f);
         return;
     }
@@ -122,8 +99,40 @@ void db_select_where(Field field, Operator op, const char* str_val, int int_val)
     if (!f) { perror("fopen"); return; }
 
     load_header(f);
-
     Row r;
+
+    // Case 1: exact match on indexed fields (id or name)
+    if (op == OP_EQ && field == FIELD_ID) {
+        long offset = index_find(&id_index, &int_val);
+        if (offset != -1) {
+            fseek(f, offset, SEEK_SET);
+            fread(&r, sizeof(Row), 1, f);
+            if (!r.is_deleted) {
+                printf("Row: id=%d, name=%s, age=%d\n", r.id, r.name, r.age);
+            }
+        } else {
+            printf("Row with id=%d not found.\n", int_val);
+        }
+        fclose(f);
+        return;
+    }
+
+    if (op == OP_EQ && field == FIELD_NAME) {
+        long offset = index_find(&name_index, str_val);
+        if (offset != -1) {
+            fseek(f, offset, SEEK_SET);
+            fread(&r, sizeof(Row), 1, f);
+            if (!r.is_deleted) {
+                printf("Row: id=%d, name=%s, age=%d\n", r.id, r.name, r.age);
+            }
+        } else {
+            printf("Row with name='%s' not found.\n", str_val);
+        }
+        fclose(f);
+        return;
+    }
+
+    // Case 2: fallback to scanning for everything else
     for (int i = 0; i < header.num_rows; i++) {
         fseek(f, sizeof(DbHeader) + i * sizeof(Row), SEEK_SET);
         fread(&r, sizeof(Row), 1, f);
@@ -132,8 +141,7 @@ void db_select_where(Field field, Operator op, const char* str_val, int int_val)
         int match = 0;
         switch (field) {
             case FIELD_ID:
-                if ((op == OP_EQ && r.id == int_val) ||
-                    (op == OP_GT && r.id > int_val) ||
+                if ((op == OP_GT && r.id > int_val) ||
                     (op == OP_LT && r.id < int_val)) match = 1;
                 break;
             case FIELD_AGE:
@@ -142,10 +150,7 @@ void db_select_where(Field field, Operator op, const char* str_val, int int_val)
                     (op == OP_LT && r.age < int_val)) match = 1;
                 break;
             case FIELD_NAME:
-                if ((op == OP_EQ && strncmp(r.name, str_val, sizeof(r.name)) == 0)) {
-                    match = 1;
-                }
-                // We’ll skip > and < for strings for now
+                if (op == OP_EQ && strcmp(r.name, str_val) == 0) match = 1;
                 break;
         }
 
@@ -156,15 +161,10 @@ void db_select_where(Field field, Operator op, const char* str_val, int int_val)
     fclose(f);
 }
 
+
 void db_update_by_id(int id, const char* new_name, int new_age) {
     FILE* f = fopen(DB_FILE, "r+b");
     if (!f) { perror("fopen"); return; }
-
-    if (unique_field_exists(f, FIELD_NAME, new_name, id)) {
-        printf("Error: name '%s' already exists. Update rejected.\n", new_name);
-        fclose(f);
-        return;
-    }
 
     load_header(f);
 
@@ -174,6 +174,12 @@ void db_update_by_id(int id, const char* new_name, int new_age) {
         fread(&r, sizeof(Row), 1, f);
 
         if (r.id == id && !r.is_deleted) {
+            if (index_find(&name_index, new_name) != -1 && strcmp(r.name, new_name) != 0) {
+                printf("Error: name '%s' already exists. Update rejected.\n", new_name);
+                fclose(f);
+                return;
+            }
+    
             strncpy(r.name, new_name, sizeof(r.name));
             r.age = new_age;
 
