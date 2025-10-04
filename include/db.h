@@ -1,6 +1,9 @@
 #ifndef DB_H
 #define DB_H
 
+#include <stdio.h>
+
+#define DB_FILE "rows.db"
 #define NAME_SIZE 32
 #define MAX_CONDITIONS 4
 
@@ -70,11 +73,13 @@ typedef struct {
     int query_id;
 } Command;
 
+void load_header(FILE* f);
+DbHeader* get_header(void);
+
 void db_init();
 void db_insert(Row* row);
 void db_select_all();
-void db_select_where(Field field, Operator op, const char* str_val, int int_val);
-void db_select_where_list(ConditionList* conds);
+void db_select_where(ConditionList* conds);
 void db_update_by_id(int id, const char* new_name, int new_age);
 void db_update_where(ConditionList* conds, const Row* new_values);
 void db_delete_by_id(int id);

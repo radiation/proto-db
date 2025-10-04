@@ -22,7 +22,7 @@ int main() {
                 printf("Inserted row.\n");
                 break;
             case CMD_SELECT_COND:
-                db_select_where_list(&cmd.conds);
+                db_select_where(&cmd.conds);
                 break;
             case CMD_SELECT_ALL:
                 db_select_all();

@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "where_parser.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

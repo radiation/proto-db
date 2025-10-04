@@ -1,18 +1,20 @@
 #include "db.h"
 #include "index.h"
+#include "query.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define DB_FILE "rows.db"
-
 static DbHeader header;
 static Index id_index;
 static Index name_index;
+static const Row* update_values;
 
-static int eval_condition(Row* r, Condition* cond);
+DbHeader* get_header(void) {
+    return &header;
+}
 
-static void load_header(FILE* f) {
+void load_header(FILE* f) {
     fseek(f, 0, SEEK_SET);
     if (fread(&header, sizeof(DbHeader), 1, f) != 1) {
         // if empty file, init
@@ -97,147 +99,36 @@ void db_select_all() {
     fclose(f);
 }
 
-void db_select_where(Field field, Operator op, const char* str_val, int int_val) {
-    FILE* f = fopen(DB_FILE, "rb");
-    if (!f) { perror("fopen"); return; }
-
-    load_header(f);
-    Row r;
-
-    // Case 1: exact match on indexed fields (id or name)
-    if (op == OP_EQ && field == FIELD_ID) {
-        long offset = index_find(&id_index, &int_val);
-        if (offset != -1) {
-            fseek(f, offset, SEEK_SET);
-            fread(&r, sizeof(Row), 1, f);
-            if (!r.is_deleted) {
-                printf("Row: id=%d, name=%s, age=%d\n", r.id, r.name, r.age);
-            }
-        } else {
-            printf("Row with id=%d not found.\n", int_val);
-        }
-        fclose(f);
-        return;
-    }
-
-    if (op == OP_EQ && field == FIELD_NAME) {
-        long offset = index_find(&name_index, str_val);
-        if (offset != -1) {
-            fseek(f, offset, SEEK_SET);
-            fread(&r, sizeof(Row), 1, f);
-            if (!r.is_deleted) {
-                printf("Row: id=%d, name=%s, age=%d\n", r.id, r.name, r.age);
-            }
-        } else {
-            printf("Row with name='%s' not found.\n", str_val);
-        }
-        fclose(f);
-        return;
-    }
-
-    // Case 2: fallback to scanning for everything else
-    for (int i = 0; i < header.num_rows; i++) {
-        fseek(f, sizeof(DbHeader) + i * sizeof(Row), SEEK_SET);
-        fread(&r, sizeof(Row), 1, f);
-        if (r.is_deleted) continue;
-
-        int match = 0;
-        switch (field) {
-            case FIELD_ID:
-                if ((op == OP_GT && r.id > int_val) ||
-                    (op == OP_LT && r.id < int_val)) match = 1;
-                break;
-            case FIELD_AGE:
-                if ((op == OP_EQ && r.age == int_val) ||
-                    (op == OP_GT && r.age > int_val) ||
-                    (op == OP_LT && r.age < int_val)) match = 1;
-                break;
-            case FIELD_NAME:
-                if (op == OP_EQ && strcmp(r.name, str_val) == 0) match = 1;
-                break;
-        }
-
-        if (match) {
-            printf("Row: id=%d, name=%s, age=%d\n", r.id, r.name, r.age);
-        }
-    }
-    fclose(f);
+static void print_row(Row* r, long offset, FILE* f) {
+    (void)offset;
+    (void)f;
+    printf("Row: id=%d, name=%s, age=%d\n", r->id, r->name, r->age);
 }
 
-void db_select_where_list(ConditionList* conds) {
-    FILE* f = fopen(DB_FILE, "rb");
-    if (!f) { perror("fopen"); return; }
+void db_select_where(ConditionList* conds) {
+    scan_rows(conds, print_row);
+}
 
-    load_header(f);
-    Row r;
+static void update_row(Row* r, long offset, FILE* f) {
+    index_remove(&id_index, &r->id);
+    index_remove(&name_index, r->name);
 
-    for (int i = 0; i < header.num_rows; i++) {
-        fseek(f, sizeof(DbHeader) + i * sizeof(Row), SEEK_SET);
-        fread(&r, sizeof(Row), 1, f);
-        if (r.is_deleted) continue;
+    if (update_values->age != -1) r->age = update_values->age;
+    if (update_values->name[0] != '\0')
+        strncpy(r->name, update_values->name, sizeof(r->name));
 
-        int result = eval_condition(&r, &conds->conds[0]);
+    fseek(f, offset, SEEK_SET);
+    fwrite(r, sizeof(Row), 1, f);
+    fflush(f);
 
-        for (int j = 0; j < conds->op_count; j++) {
-            int rhs = eval_condition(&r, &conds->conds[j + 1]);
-            if (conds->ops[j] == LOGICAL_AND) result = result && rhs;
-            else if (conds->ops[j] == LOGICAL_OR) result = result || rhs;
-        }
-
-        if (result) {
-            printf("Row: id=%d, name=%s, age=%d\n", r.id, r.name, r.age);
-        }
-    }
-
-    fclose(f);
+    index_add(&id_index, &r->id, offset);
+    index_add(&name_index, r->name, offset);
 }
 
 void db_update_where(ConditionList* conds, const Row* new_values) {
-    FILE* f = fopen(DB_FILE, "r+b");
-    if (!f) { perror("fopen"); return; }
-
-    load_header(f);
-    Row r;
-    int updated_count = 0;
-
-    for (int i = 0; i < header.num_rows; i++) {
-        long offset = sizeof(DbHeader) + i * sizeof(Row);
-        fseek(f, offset, SEEK_SET);
-        fread(&r, sizeof(Row), 1, f);
-        if (r.is_deleted) continue;
-
-        // Evaluate conditions
-        int result = eval_condition(&r, &conds->conds[0]);
-        for (int j = 0; j < conds->op_count; j++) {
-            int rhs = eval_condition(&r, &conds->conds[j + 1]);
-            if (conds->ops[j] == LOGICAL_AND) result = result && rhs;
-            else if (conds->ops[j] == LOGICAL_OR) result = result || rhs;
-        }
-
-        if (result) {
-            // Remove old index entries if needed
-            index_remove(&name_index, r.name);
-            index_remove(&id_index, &r.id);
-
-            // Apply updates
-            if (new_values->age != -1) r.age = new_values->age;
-            if (new_values->name[0] != '\0') strncpy(r.name, new_values->name, sizeof(r.name));
-
-            // Rewrite row
-            fseek(f, offset, SEEK_SET);
-            fwrite(&r, sizeof(Row), 1, f);
-            fflush(f);
-
-            // Re-index updated values
-            index_add(&id_index, &r.id, offset);
-            index_add(&name_index, r.name, offset);
-
-            updated_count++;
-        }
-    }
-
-    fclose(f);
-    printf("Updated %d matching rows.\n", updated_count);
+    update_values = new_values;
+    scan_rows(conds, update_row);
+    printf("Updated matching rows.\n");
 }
 
 void db_update_by_id(int id, const char* new_name, int new_age) {
@@ -276,43 +167,19 @@ void db_update_by_id(int id, const char* new_name, int new_age) {
     fclose(f);
 }
 
+static void delete_row(Row* r, long offset, FILE* f) {
+    r->is_deleted = 1;
+    fseek(f, offset, SEEK_SET);
+    fwrite(r, sizeof(Row), 1, f);
+    fflush(f);
+
+    index_remove(&id_index, &r->id);
+    index_remove(&name_index, r->name);
+}
+
 void db_delete_where(ConditionList* conds) {
-    FILE* f = fopen(DB_FILE, "r+b");
-    if (!f) { perror("fopen"); return; }
-
-    load_header(f);
-
-    Row r;
-    int deleted_count = 0;
-
-    for (int i = 0; i < header.num_rows; i++) {
-        long offset = sizeof(DbHeader) + i * sizeof(Row);
-        fseek(f, offset, SEEK_SET);
-        fread(&r, sizeof(Row), 1, f);
-        if (r.is_deleted) continue;
-
-        int result = eval_condition(&r, &conds->conds[0]);
-        for (int j = 0; j < conds->op_count; j++) {
-            int rhs = eval_condition(&r, &conds->conds[j + 1]);
-            if (conds->ops[j] == LOGICAL_AND) result = result && rhs;
-            else if (conds->ops[j] == LOGICAL_OR) result = result || rhs;
-        }
-
-        if (result) {
-            r.is_deleted = 1;
-            fseek(f, offset, SEEK_SET);
-            fwrite(&r, sizeof(Row), 1, f);
-            fflush(f);
-
-            index_remove(&id_index, &r.id);
-            index_remove(&name_index, r.name);
-
-            deleted_count++;
-        }
-    }
-
-    fclose(f);
-    printf("Deleted %d matching rows.\n", deleted_count);
+    scan_rows(conds, delete_row);
+    printf("Deleted matching rows.\n");
 }
 
 void db_delete_by_id(int id) {
@@ -343,23 +210,4 @@ void db_delete_by_id(int id) {
 
     printf("Row with id=%d not found or already deleted.\n", id);
     fclose(f);
-}
-
-static int eval_condition(Row* r, Condition* cond) {
-    switch (cond->field) {
-        case FIELD_ID:
-            if (cond->op == OP_EQ) return r->id == cond->int_value;
-            if (cond->op == OP_GT) return r->id > cond->int_value;
-            if (cond->op == OP_LT) return r->id < cond->int_value;
-            break;
-        case FIELD_AGE:
-            if (cond->op == OP_EQ) return r->age == cond->int_value;
-            if (cond->op == OP_GT) return r->age > cond->int_value;
-            if (cond->op == OP_LT) return r->age < cond->int_value;
-            break;
-        case FIELD_NAME:
-            if (cond->op == OP_EQ) return strcmp(r->name, cond->str_value) == 0;
-            break;
-    }
-    return 0;
 }
