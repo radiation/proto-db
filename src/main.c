@@ -22,13 +22,19 @@ int main() {
                 printf("Inserted row.\n");
                 break;
             case CMD_SELECT_COND:
-                db_select_where(cmd.field, cmd.op, cmd.str_value, cmd.int_value);
+                db_select_where_list(&cmd.conds);
                 break;
             case CMD_SELECT_ALL:
                 db_select_all();
                 break;
             case CMD_UPDATE:
                 db_update_by_id(cmd.query_id, cmd.row.name, cmd.row.age);
+                break;
+            case CMD_UPDATE_WHERE:
+                db_update_where(&cmd.conds, &cmd.row);
+                break;
+            case CMD_DELETE_WHERE:
+                db_delete_where(&cmd.conds);
                 break;
             case CMD_DELETE:
                 db_delete_by_id(cmd.query_id);
