@@ -3,28 +3,9 @@
 
 #include <stdio.h>
 
-#define DB_FILE "rows.db"
-#define NAME_SIZE 32
 #define MAX_CONDITIONS 4
 
-typedef struct {
-    int num_rows;
-    int next_id;
-} DbHeader;
-
-typedef struct {
-    int id;
-    char name[NAME_SIZE];
-    int age;
-    int is_deleted;
-} Row;
-
-typedef enum {
-    FIELD_ID,
-    FIELD_NAME,
-    FIELD_AGE
-} Field;
-
+// --- Core logical/conditional operators ---
 typedef enum {
     OP_EQ,   // =
     OP_GT,   // >
@@ -40,49 +21,29 @@ typedef enum {
     LOGICAL_OR
 } LogicalOp;
 
+// --- WHERE clause condition ---
 typedef struct {
-    Field field;
+    char field[32];
     Operator op;
     char str_value[32];
     int int_value;
 } Condition;
 
 typedef struct {
-    Condition* conds;
+    Condition conds[MAX_CONDITIONS];
     int cond_count;
-    LogicalOp* ops;
+    LogicalOp ops[MAX_CONDITIONS - 1];
     int op_count;
 } ConditionList;
 
-typedef enum {
-    CMD_INSERT,
-    CMD_SELECT_ALL,
-    CMD_SELECT_COND,
-    CMD_UPDATE,
-    CMD_UPDATE_WHERE,
-    CMD_DELETE,
-    CMD_DELETE_WHERE,
-    CMD_EXIT,
-    CMD_UNKNOWN
-} CommandType;
-
+// --- Table header for on-disk files ---
 typedef struct {
-    CommandType type;
-    ConditionList conds;
-    Row row;
-    int query_id;
-} Command;
+    int num_rows;
+    int next_id;
+} DbHeader;
 
-void load_header(FILE* f);
 DbHeader* get_header(void);
-
+void load_header(FILE* f);
 void db_init();
-void db_insert(Row* row);
-void db_select_all();
-void db_select_where(ConditionList* conds);
-void db_update_by_id(int id, const char* new_name, int new_age);
-void db_update_where(ConditionList* conds, const Row* new_values);
-void db_delete_by_id(int id);
-void db_delete_where(ConditionList* conds);
 
 #endif
