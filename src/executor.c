@@ -407,6 +407,25 @@ int db_execute_command(const Command* cmd) {
             return 0;
         }
 
+        case CMD_DESCRIBE: {
+            const char* name = cmd->describe.table_name;
+            const TableDef* def = catalog_find_table(name);
+
+            if (!def) {
+                fprintf(stderr, "Error: table '%s' not found.\n", name);
+                return -1;
+            }
+
+            printf("Table: %s\n", def->name);
+            printf("Columns:\n");
+            for (int i = 0; i < def->num_columns; i++) {
+                const ColumnDef* col = &def->columns[i];
+                const char* type_str = (col->type == COL_INT) ? "int" : "string";
+                printf("- %s (%s)\n", col->name, type_str);
+            }
+            return 0;
+        }
+
         case CMD_INSERT:
             return db_insert_row(cmd->insert.table_name,
                                  cmd->insert.values,

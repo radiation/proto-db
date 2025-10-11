@@ -4,6 +4,7 @@
 
 typedef enum {
     CMD_CREATE_TABLE,
+    CMD_DESCRIBE,
     CMD_INSERT,
     CMD_SELECT_ALL,
     CMD_SELECT_COND,
@@ -32,6 +33,10 @@ typedef struct {
     ColumnDef columns[16];
     int column_count;
 } CreateTableCommand;
+
+typedef struct {
+    char table_name[32];
+} DescribeCommand;
 
 typedef struct {
     char table_name[32];
@@ -64,6 +69,7 @@ typedef struct {
     CommandType type;
     union {
         CreateTableCommand create_table;
+        DescribeCommand describe;
         InsertCommand insert;
         SelectWhereCommand select_where;
         SelectAllCommand select_all;

@@ -88,6 +88,18 @@ Command parse_command(const char* input) {
         return cmd;
     }
 
+    if (strncmp(input, "describe", 8) == 0) {
+        cmd.type = CMD_DESCRIBE;
+        char table_name[32];
+
+        if (sscanf(input, "describe %31s", table_name) == 1) {
+            strncpy(cmd.describe.table_name, table_name, sizeof(cmd.describe.table_name));
+        } else {
+            cmd.describe.table_name[0] = '\0';
+        }
+
+        return cmd;
+    }
     // INSERT INTO <table> <val1> <val2> ...
     if (strncmp(input, "insert into", 11) == 0) {
         cmd.type = CMD_INSERT;
