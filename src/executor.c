@@ -9,11 +9,6 @@
 #define DATA_DIR "data"
 #define ROW_BUFFER_SIZE 1024
 
-typedef struct {
-    int num_rows;
-    int next_id;
-} TableHeader;
-
 static void ensure_data_dir_exists() {
     struct stat st = {0};
     if (stat(DATA_DIR, &st) == -1) {
@@ -80,31 +75,36 @@ int db_insert_row(const char* table_name, ColumnValue* values, int count) {
     // Prepare a complete row array matching schema
     ColumnValue full_row[MAX_COLUMNS];
     int expected = def->num_columns;
-    int input_index = 0;
 
+    // Build the full row based on schema + provided values
     for (int i = 0; i < expected; i++) {
         const ColumnDef* col = &def->columns[i];
         ColumnValue* v = &full_row[i];
         strncpy(v->column, col->name, sizeof(v->column));
 
-        // If this is the "id" column, auto-assign it
+        // Auto-increment ID if applicable
         if (strcmp(col->name, "id") == 0 && col->type == COL_INT) {
             v->type = VALUE_INT;
             v->int_val = header.next_id++;
             continue;
         }
 
-        // Otherwise take user-provided values in order
-        if (input_index < count) {
-            v->type = values[input_index].type;
-            if (v->type == VALUE_INT)
-                v->int_val = values[input_index].int_val;
-            else
-                strncpy(v->str_val, values[input_index].str_val,
-                        sizeof(v->str_val));
-            input_index++;
-        } else {
-            // Default for missing trailing columns
+        // Try to find a matching user-specified value by column name
+        int matched = 0;
+        for (int j = 0; j < count; j++) {
+            if (strcmp(values[j].column, col->name) == 0) {
+                v->type = values[j].type;
+                if (v->type == VALUE_INT)
+                    v->int_val = values[j].int_val;
+                else
+                    strncpy(v->str_val, values[j].str_val, sizeof(v->str_val));
+                matched = 1;
+                break;
+            }
+        }
+
+        // Fill defaults for any missing columns
+        if (!matched) {
             v->type = (col->type == COL_INT) ? VALUE_INT : VALUE_STRING;
             if (col->type == COL_INT)
                 v->int_val = 0;
