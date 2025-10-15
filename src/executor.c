@@ -230,7 +230,10 @@ int db_select_where(const char* table_name, const ConditionList* conds) {
 // ---------------------------------------------------------
 // UPDATE WHERE
 // ---------------------------------------------------------
-int db_update_where(const char* table_name, const ConditionList* conds, const ColumnValue* updates, int update_count) {
+int db_update_where(const char* table_name,
+                    const ConditionList* conds,
+                    const ColumnValue* updates,
+                    int update_count) {
     const TableDef* def = catalog_find_table(table_name);
     if (!def) {
         fprintf(stderr, "Error: table '%s' not found.\n", table_name);
@@ -256,37 +259,38 @@ int db_update_where(const char* table_name, const ConditionList* conds, const Co
         long offset = sizeof(TableHeader) + i * ROW_BUFFER_SIZE;
         fseek(f, offset, SEEK_SET);
 
-        // Read row
+        // --- Read the row into memory ---
         for (int j = 0; j < def->num_columns; j++) {
-            ColumnDef col = def->columns[j];
+            const ColumnDef* col = &def->columns[j];
             ColumnValue* val = &row[j];
-            strncpy(val->column, col.name, sizeof(val->column));
-            val->type = (col.type == COL_INT) ? VALUE_INT : VALUE_STRING;
+            strncpy(val->column, col->name, sizeof(val->column));
+            val->type = (col->type == COL_INT) ? VALUE_INT : VALUE_STRING;
 
-            if (col.type == COL_INT) {
+            if (col->type == COL_INT) {
                 fread(&val->int_val, sizeof(int), 1, f);
             } else {
-                fread(val->str_val, col.length, 1, f);
-                val->str_val[col.length - 1] = '\0';
+                fread(val->str_val, col->length, 1, f);
+                val->str_val[col->length - 1] = '\0';
             }
         }
 
-        // Apply conditions
+        // --- Evaluate WHERE conditions ---
         if (eval_condition_list(row, def->num_columns, conds)) {
-            // Update matching columns
+            // --- Apply updates by column name ---
             for (int u = 0; u < update_count; u++) {
                 for (int j = 0; j < def->num_columns; j++) {
                     if (strcmp(row[j].column, updates[u].column) == 0) {
-                        if (updates[u].type == VALUE_INT) {
+                        if (updates[u].type == VALUE_INT)
                             row[j].int_val = updates[u].int_val;
-                        } else {
-                            strncpy(row[j].str_val, updates[u].str_val, sizeof(row[j].str_val));
-                        }
+                        else
+                            strncpy(row[j].str_val, updates[u].str_val,
+                                    sizeof(row[j].str_val));
+                        break; // Once we’ve updated, stop inner loop
                     }
                 }
             }
 
-            // Write row back to file
+            // --- Seek back & overwrite this row ---
             fseek(f, offset, SEEK_SET);
             for (int j = 0; j < def->num_columns; j++) {
                 if (row[j].type == VALUE_INT)
@@ -295,13 +299,21 @@ int db_update_where(const char* table_name, const ConditionList* conds, const Co
                     fwrite(row[j].str_val, def->columns[j].length, 1, f);
             }
 
+            fflush(f); // ensure the change is written immediately
             updated++;
         }
     }
 
+    // --- rewrite header ---
+    fseek(f, 0, SEEK_SET);
+    fwrite(&header, sizeof(TableHeader), 1, f);
+    fflush(f);
+
     fclose(f);
     printf("Updated %d row(s) in '%s'.\n", updated, table_name);
-    return 0;
+
+    // Return the number of rows actually updated (not 0)
+    return updated;
 }
 
 // ---------------------------------------------------------
@@ -450,7 +462,7 @@ int db_execute_command(const Command* cmd) {
 
         case CMD_EXIT:
             printf("Exiting ProtoDB.\n");
-            return 0;
+            return 1;
 
         default:
             fprintf(stderr, "Unknown or unimplemented command type (%d).\n",

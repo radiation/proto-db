@@ -25,11 +25,42 @@ static void to_lowercase(char* s) {
     }
 }
 
-static void trim_trailing(char* s) {
+// Remove trailing whitespace, semicolons, and normalize spacing
+static void sanitize_input(char* s) {
+    // 1️⃣ Trim trailing whitespace, newlines, and semicolons
     size_t len = strlen(s);
     while (len > 0 && (s[len - 1] == ';' || s[len - 1] == '\n' || s[len - 1] == ' ')) {
-        s[len - 1] = '\0';
-        len--;
+        s[--len] = '\0';
+    }
+
+    // 2️⃣ Trim leading whitespace
+    size_t start = 0;
+    while (s[start] == ' ' || s[start] == '\t')
+        start++;
+    if (start > 0)
+        memmove(s, s + start, len - start + 1);
+
+    // 3️⃣ Normalize internal whitespace (collapse multiple spaces)
+    char* dst = s;
+    int space_seen = 0;
+    for (char* src = s; *src; src++) {
+        if (*src == ' ' || *src == '\t') {
+            if (!space_seen) *dst++ = ' ';
+            space_seen = 1;
+        } else {
+            *dst++ = *src;
+            space_seen = 0;
+        }
+    }
+    *dst = '\0';
+
+    // 4️⃣ Trim dangling quotes
+    if (s[0] == '"' && s[strlen(s) - 1] == '"') {
+        memmove(s, s + 1, strlen(s) - 2);
+        s[strlen(s) - 2] = '\0';
+    } else if (s[0] == '\'' && s[strlen(s) - 1] == '\'') {
+        memmove(s, s + 1, strlen(s) - 2);
+        s[strlen(s) - 2] = '\0';
     }
 }
 
@@ -43,7 +74,7 @@ Command parse_command(const char* input) {
     buffer[sizeof(buffer) - 1] = '\0';
 
     // Normalize input
-    trim_trailing(buffer);
+    sanitize_input(buffer);
     to_lowercase(buffer);
     input = buffer;
     
@@ -100,6 +131,7 @@ Command parse_command(const char* input) {
 
         return cmd;
     }
+
     // INSERT INTO <table> <val1> <val2> ...
     if (strncmp(input, "insert into", 11) == 0) {
         cmd.type = CMD_INSERT;
@@ -194,10 +226,49 @@ Command parse_command(const char* input) {
         return cmd;
     }
 
-    // SELECT ALL (for now)
+    if (strncmp(input, "select from", 11) == 0 && strstr(input, "where")) {
+        cmd.type = CMD_SELECT_COND;
+
+        char table_name[32], field[32], op[3], value[64];
+        int parsed = sscanf(input, "select from %31s where %31[^<>=! ] %2[<>=!] %63[^\n]",
+                            table_name, field, op, value);
+        if (parsed != 4) return cmd;
+
+        strncpy(cmd.select_where.table_name, table_name, sizeof(cmd.select_where.table_name));
+        cmd.select_where.conds.cond_count = 1;
+        cmd.select_where.conds.op_count = 0;
+
+        Condition* c = &cmd.select_where.conds.conds[0];
+        strncpy(c->field, field, sizeof(c->field));
+
+        if (strcmp(op, "=") == 0) c->op = OP_EQ;
+        else if (strcmp(op, "!=") == 0) c->op = OP_NEQ;
+        else if (strcmp(op, ">") == 0) c->op = OP_GT;
+        else if (strcmp(op, "<") == 0) c->op = OP_LT;
+        else if (strcmp(op, ">=") == 0) c->op = OP_GTE;
+        else if (strcmp(op, "<=") == 0) c->op = OP_LTE;
+        else return cmd;
+
+        if (value[0] == '"' || value[0] == '\'') {
+            c->int_value = 0;
+            strncpy(c->str_value, value + 1, strlen(value) - 2);
+            c->str_value[strlen(value) - 2] = '\0';
+        } else {
+            c->int_value = atoi(value);
+            c->str_value[0] = '\0';
+        }
+
+        return cmd;
+    }
+
     if (strncmp(input, "select from", 11) == 0) {
         cmd.type = CMD_SELECT_ALL;
-        sscanf(input, "select from %31s", cmd.select_all.table_name);
+
+        char table_name[32];
+        if (sscanf(input, "select from %31s", table_name) != 1)
+            return cmd;
+
+        strncpy(cmd.select_all.table_name, table_name, sizeof(cmd.select_all.table_name));
         return cmd;
     }
 
@@ -208,8 +279,11 @@ Command parse_command(const char* input) {
         char table_name[32], where_field[32], where_op[3], where_val[64];
         char set_field[32], set_val[64];
 
-        if (sscanf(input, "update %31s where %31s %2s %63s set %31s = %63s",
-                   table_name, where_field, where_op, where_val, set_field, set_val) != 6) {
+        int matched = sscanf(input,
+            "update %31s set %31[^= ] = %63[^ ] where %31[^<>=! ] %2[<>=!] %63[^\n]",
+            table_name, set_field, set_val, where_field, where_op, where_val);
+
+        if (matched != 6) {
             return cmd;
         }
 

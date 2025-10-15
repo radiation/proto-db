@@ -3,16 +3,13 @@
 #include <stdio.h>
 #include <string.h>
 
-typedef struct {
-    int num_rows;
-    int next_id;
-} TableHeader;
-
 int eval_condition(ColumnValue* row, int column_count, const Condition* cond) {
     for (int i = 0; i < column_count; i++) {
-        if (strcmp(row[i].column, cond->field) != 0) continue;
+        if (strcmp(row[i].column, cond->field) != 0)
+            continue;
 
-        if (row[i].type == VALUE_INT) {
+        if (row[i].type == VALUE_INT && cond->str_value[0] == '\0') {
+            // Integer comparison
             switch (cond->op) {
                 case OP_EQ:  return row[i].int_val == cond->int_value;
                 case OP_GT:  return row[i].int_val >  cond->int_value;
@@ -22,11 +19,28 @@ int eval_condition(ColumnValue* row, int column_count, const Condition* cond) {
                 case OP_LTE: return row[i].int_val <= cond->int_value;
                 default:     return 0;
             }
-        } else if (row[i].type == VALUE_STRING) {
+        }
+        else if (row[i].type == VALUE_STRING) {
+            // Ttrim whitespace and quotes
+            const char* val = row[i].str_val;
+            const char* cond_str = cond->str_value;
+            char lhs[64], rhs[64];
+            strncpy(lhs, val, sizeof(lhs));
+            strncpy(rhs, cond_str, sizeof(rhs));
+            lhs[sizeof(lhs)-1] = '\0';
+            rhs[sizeof(rhs)-1] = '\0';
+
+            // Trim spaces and quotes (e.g. "charlie" → charlie)
+            char* start = rhs;
+            while (*start == '"' || *start == '\'' || *start == ' ') start++;
+            char* end = rhs + strlen(rhs) - 1;
+            while (end > start && (*end == '"' || *end == '\'' || *end == ' ')) *end-- = '\0';
+
+            int cmp = strcmp(lhs, start);
             switch (cond->op) {
-                case OP_EQ:  return strcmp(row[i].str_val, cond->str_value) == 0;
-                case OP_NEQ: return strcmp(row[i].str_val, cond->str_value) != 0;
-                default:     return 0;  // No string GT/LT yet
+                case OP_EQ:  return cmp == 0;
+                case OP_NEQ: return cmp != 0;
+                default:     return 0; // no GT/LT for strings yet
             }
         }
     }

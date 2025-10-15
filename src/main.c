@@ -18,12 +18,11 @@ int main() {
 
         Command cmd = parse_command(command);
         printf("Parsed command of type %d\n", cmd.type);
-        if (db_execute_command(&cmd) != 0) {
-            printf("Command failed or is not implemented.\n");
-        }
-        if (cmd.type == CMD_EXIT) {
+        int rc = db_execute_command(&cmd);
+        if (rc == 1 || cmd.type == CMD_EXIT) {
             break;
         }
+        fflush(stdout);
     }
     return 0;
 }
