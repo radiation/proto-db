@@ -19,9 +19,13 @@ int main() {
         Command cmd = parse_command(command);
         printf("Parsed command of type %d\n", cmd.type);
         int rc = db_execute_command(&cmd);
-        if (rc == 1 || cmd.type == CMD_EXIT) {
+
+        if (rc == DB_EXIT || cmd.type == CMD_EXIT)
             break;
-        }
+
+        if (rc == DB_ERROR)
+            fprintf(stderr, "Command failed or is not implemented.\n");
+
         fflush(stdout);
     }
     return 0;

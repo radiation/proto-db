@@ -1,6 +1,10 @@
 #pragma once
 #include "catalog.h"  // for ColumnDef
-#include "db.h"       // for ConditionList, optionally
+#include "db.h"       // for ConditionList
+
+#define DB_OK     0
+#define DB_EXIT   -1
+#define DB_ERROR  -2
 
 typedef enum {
     CMD_CREATE_TABLE,

@@ -462,11 +462,10 @@ int db_execute_command(const Command* cmd) {
 
         case CMD_EXIT:
             printf("Exiting ProtoDB.\n");
-            return 1;
+            return DB_EXIT;
 
         default:
-            fprintf(stderr, "Unknown or unimplemented command type (%d).\n",
-                    cmd->type);
-            return -1;
+            fprintf(stderr, "Unknown or unimplemented command type (%d).\n", cmd->type);
+            return DB_ERROR;
     }
 }
